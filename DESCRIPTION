@@ -1,0 +1,16 @@
+Package: SupHA
+Title: Herramientas de Geoprocesamiento para el Cálculo de Superficies
+Version: 0.1.0
+Authors@R: 
+    person("David", "Martinez", email = "dmartinez@example.com", role = c("aut", "cre"))
+Description: Proporciona funciones para interactuar con herramientas de geoprocesamiento
+    de ArcGIS (`arcpy`) desde R. Incluye una función para calcular y estandarizar
+    el campo de superficie en hectáreas de capas espaciales.
+License: MIT
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Imports:
+    reticulate
+URL: https://github.com/tu-usuario/SupHA
+BugReports: https://github.com/tu-usuario/SupHA/issues
