@@ -11,15 +11,33 @@ st_trans_sup_ha(
   escala = 2L
 )
 }
+\arguments{
+\item{shapefile_path}{(cadena de texto) Ruta completa a la capa de entidades a procesar.}
+
+\item{campo_superficie}{(cadena de texto) Nombre del campo para la superficie. Por defecto es \code{"Sup_ha"}.}
+
+\item{precision}{(entero) Precisión total del campo numérico (tipo DOUBLE). Por defecto es \code{8}.}
+
+\item{escala}{(entero) Número de dígitos decimales del campo numérico. Por defecto es \code{2}.}
+}
+\value{
+Devuelve \code{TRUE} si el proceso fue exitoso, o \code{FALSE} si ocurrió un error.
+Los mensajes de estado o error se imprimirán en la consola.
+}
 \description{
 Esta función es un envoltorio (wrapper) para una herramienta de geoprocesamiento en Python
+que utiliza \code{arcpy}. Asegura que una capa de entidades (shapefile, feature class)
+tenga un campo de superficie con un formato específico y calcula el área en hectáreas.
+
+La función original de Python verifica si el campo de superficie existe. Si no, lo crea.
+Si existe pero con un formato incorrecto (tipo, precisión, escala), recrea la capa
 para preservar el orden de los campos y aplica el formato correcto. Finalmente,
 calcula o recalcula el área.
 }
 \section{Configuración del Entorno}{
 
 Antes de usar esta función, es \strong{imprescindible} configurar el entorno de Python
-para que apunte a la instalación de ArcGIS Pro. Utilice la función de ayuda \code{setup_arcpy_env()}:
+para que apunte a la instalación de ArcGIS Pro o Desktop. Utilice la función de ayuda \code{setup_arcpy_env()}:
 
 \if{html}{\out{<div class="sourceCode R">}}\preformatted{# Ejecutar una vez por sesión de R
 setup_arcpy_env()

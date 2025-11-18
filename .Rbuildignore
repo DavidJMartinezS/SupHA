@@ -1,2 +1,5 @@
+^renv$
+^renv\.lock$
 ^SupHA\.Rproj$
 ^\.Rproj\.user$
+^dev$
