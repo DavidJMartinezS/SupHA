@@ -44,8 +44,8 @@ setup_arcpy_env <- function(python_path = NULL) {
   # Comprobar si reticulate ya se ha inicializado con OTRO Python.
   # py_config() nos da el estado actual. Si está inicializado y no tiene arcpy,
   # significa que es demasiado tarde para cambiar.
-  py_conf <- reticulate::py_config()
-  if (py_conf$initialized && !reticulate::py_module_available("arcpy")) {
+  py_conf <- suppressMessages(reticulate::py_config())
+  if (!is.null(py_conf) && !reticulate::py_module_available("arcpy")) {
     # Construir la ruta correcta para el mensaje de error
     arcpy_python_path <- if (!is.null(python_path)) python_path else "la ruta/a/tu/python.exe de ArcGIS"
     
