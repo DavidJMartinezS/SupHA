@@ -47,8 +47,8 @@ st_trans_sup_ha(path)
 
 # Para varios archivos
 dir <- getwd() # Ingresar directorio donde se encuentran los shapefiles
-paths <- list.files(dir, pattern = ".shp$", full_names = T) 
-paths <- list.files(dir, pattern = ".shp$", full_names = T, recursive = T) # recursive = TRUE para buscar archivos dentro de otras carpetas
+paths <- list.files(dir, pattern = ".shp$", full.names = T) 
+paths <- list.files(dir, pattern = ".shp$", full.names = T, recursive = T) # recursive = TRUE para buscar archivos dentro de otras carpetas
 paths <- tools::list_files_with_exts(dir, exts = "shp", full.names = T)
 
 lapply(paths, st_trans_sup_ha)
