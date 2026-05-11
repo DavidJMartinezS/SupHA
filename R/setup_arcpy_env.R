@@ -39,7 +39,8 @@ setup_arcpy_env <- function(python_path = NULL) {
   # 1. Detectar ruta de Python si no se provee ----------------------------
   if (is.null(python_path)) {
 
-    if (is_arcpy_config()) {
+    # Evitar que el chequeo inicial dispare el error de arquitectura antes de tiempo
+    if (suppressWarnings(tryCatch(is_arcpy_config(), error = function(e) FALSE))) {
       message("El entorno de Python con 'arcpy' ya esta configurado y disponible.")
       return(invisible(TRUE))
     }
@@ -66,6 +67,26 @@ setup_arcpy_env <- function(python_path = NULL) {
     )
   }
 
+  # 2b. Validar arquitectura (especialmente para ArcGIS Desktop) ----------
+  is_r_64bit  <- .Machine$sizeof.pointer == 8
+  is_py_64bit <- grepl("ArcGISx64",  python_path, ignore.case = TRUE) ||
+                grepl("ArcGIS/Pro", python_path, ignore.case = TRUE) ||
+                grepl("arcgispro",  python_path, ignore.case = TRUE)
+
+  if (is_r_64bit && .is_python2(python_path) && !is_py_64bit) {
+    stop(
+      "Conflicto de arquitectura: R es de 64 bits pero el Python detectado es de 32 bits.\n",
+      "Ruta detectada: ", python_path, "\n\n",
+      "SOLUCIONES:\n",
+      "1. Instale 'ArcGIS for Desktop Background Geoprocessing (64-bit)' y vuelva a\n",
+      "   ejecutar setup_arcpy_env() para que detecte automaticamente el Python de 64 bits.\n",
+      "2. O especifique la ruta manualmente, por ejemplo:\n",
+      '   setup_arcpy_env("C:/Python27/ArcGISx6410.8/python.exe")',
+      "3. Si lo anterior no resulta, se recomienda migrar a 'ArcGIS Pro (64-bit)'.",
+      call. = FALSE
+    )
+  }
+
   # 3. Advertencia si es Python 2 (ArcGIS Desktop) ------------------------
   if (.is_python2(python_path)) {
     warning(
@@ -77,7 +98,11 @@ setup_arcpy_env <- function(python_path = NULL) {
   }
 
   # 4. Detectar conflicto de sesion de reticulate -------------------------
-  py_conf      <- suppressMessages(reticulate::py_config())
+  # Capturamos error por si reticulate ya esta amarrado a un python incompatible
+  py_conf <- tryCatch(
+    suppressMessages(reticulate::py_config()),
+    error = function(e) NULL
+  )
   already_init <- !is.null(py_conf) && nzchar(py_conf$python)
   wrong_env    <- already_init && !is_arcpy_config()
 
@@ -145,10 +170,14 @@ is_arcpy_config <- function() {
 #' @noRd
 .desktop_python_candidates <- function() {
   drives   <- c("C:", "D:")
-  versions <- paste0("10.", 9:1)   # de mayor a menor para preferir la mas reciente
+  versions <- paste0("10.", 9:1)
   combos   <- expand.grid(drive = drives, ver = versions, stringsAsFactors = FALSE)
 
-  file.path(combos$drive, "Python27", paste0("ArcGIS", combos$ver), "python.exe")
+  # 64 bits primero (ArcGISx64), luego 32 bits (ArcGIS) como fallback
+  c(
+    file.path(combos$drive, "Python27", paste0("ArcGISx64", combos$ver), "python.exe"),
+    file.path(combos$drive, "Python27", paste0("ArcGIS",    combos$ver), "python.exe")
+  )
 }
 
 #' Determina si un ejecutable de Python corresponde a la version 2.
