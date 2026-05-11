@@ -50,7 +50,7 @@ Se recomienda ejecutar este comando al inicio de tu script o sesión de R.
 \dontrun{
   # Paso 1: Configurar el entorno de Python con arcpy
   setup_arcpy_env()
-  
+
   # Paso 2: Ejecutar la función en una capa
   ruta_capa <- "C:/ruta/a/tus/datos/mi_capa.shp"
   st_trans_sup_ha(shapefile_path = ruta_capa)

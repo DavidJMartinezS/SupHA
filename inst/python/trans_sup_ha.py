@@ -1,111 +1,137 @@
-import arcpy
+from __future__ import print_function, unicode_literals
+
 import os
-import sys
+import arcpy
+
 
 def st_trans_sup_ha(shapefile_path, campo_superficie="Sup_ha", precision=8, escala=2):
     """
-    Procesa un shapefile (o clase de entidad) para asegurar un campo de superficie.
+    Procesa un shapefile o clase de entidad para asegurar un campo de superficie.
 
-    Verifica si el campo 'Sup_ha' existe. Si existe, lo elimina y lo vuelve a crear
-    con la precisión y escala especificadas, luego calcula la superficie en hectáreas.
-    Si no existe, lo crea y calcula la superficie.
+    Si el campo ya existe con el tipo y precisión correctos, solo recalcula la
+    geometría. En caso contrario, recrea el campo preservando el orden original
+    de columnas y recalcula la superficie en hectáreas.
+
+    Compatible con Python 2.7 (ArcMap) y Python 3.x (ArcGIS Pro).
 
     Args:
-        shapefile_path (str): Ruta completa al shapefile o clase de entidad a procesar.
-        campo_superficie (str): Nombre del campo para la superficie (por defecto "Sup_ha").
+        shapefile_path (str): Ruta al shapefile o clase de entidad.
+        campo_superficie (str): Nombre del campo de superficie. Por defecto "Sup_ha".
         precision (int): Precisión del campo DOUBLE (dígitos totales).
         escala (int): Escala del campo DOUBLE (dígitos después del decimal).
+
+    Returns:
+        True si el proceso finalizó correctamente.
+
+    Raises:
+        FileNotFoundError: Si shapefile_path no existe.
+        RuntimeError: Si ocurre un error de ArcPy o un error inesperado.
     """
 
-    # Verificar si el shapefile existe 
+    # 1. Verificar existencia del archivo -----------------------------------
     if not arcpy.Exists(shapefile_path):
-        print(f"Error: El archivo no existe en la ruta especificada: {shapefile_path}", file=sys.stderr)
-        return False
+        raise IOError(
+            "El archivo no existe en la ruta especificada: {}".format(shapefile_path)
+        )
 
     try:
-        # Habilitar la sobrescritura de salidas
+        # 2. Configurar entorno de arcpy ------------------------------------
         arcpy.env.overwriteOutput = True
-
-        # Obtenemos el sistema de coordenadas de la capa de entrada y lo establecemos en el entorno.
-        spatial_ref = arcpy.Describe(shapefile_path).spatialReference
+        desc        = arcpy.Describe(shapefile_path)
+        spatial_ref = desc.spatialReference
         arcpy.env.outputCoordinateSystem = spatial_ref
 
-        # Obtener una lista de los campos existentes
-        original_fields = arcpy.ListFields(shapefile_path)
-        field_obj = next((f for f in original_fields if f.name.lower() == campo_superficie.lower()), None)
+        # 3. Detectar tipo de geometría -------------------------------------
+        geometry_type = desc.shapeType.upper()
 
-        if field_obj:
-            # Comprobar si el campo tiene el tipo, precisión y escala correctos.
-            if (field_obj.type == "Double" and 
-                field_obj.precision == precision and 
-                field_obj.scale == escala):
-                # Si el formato es correcto, solo calculamos la geometría y terminamos.
-                # Esto es rápido y no altera el orden de los campos.
-                arcpy.management.CalculateGeometryAttributes(
-                    in_features=shapefile_path,
-                    geometry_property=[[campo_superficie, 'AREA']],
-                    area_unit="HECTARES",
-                    coordinate_format="SAME_AS_INPUT"
-                )
-                return True
-        
-        # Crear una ruta para la capa temporal
+        # 4. Buscar el campo de superficie ---------------------------------
+        original_fields = arcpy.ListFields(shapefile_path)
+        field_obj = next(
+            (f for f in original_fields
+             if f.name.lower() == campo_superficie.lower()),
+            None
+        )
+
+        # 5. Caso rápido: campo correcto, solo recalcular -------------------
+        campo_correcto = (
+            field_obj is not None
+            and field_obj.type == "Double"
+            and field_obj.precision == precision
+            and field_obj.scale == escala
+        )
+
+        if campo_correcto:
+            arcpy.management.CalculateGeometryAttributes(
+                in_features       = shapefile_path,
+                geometry_property = [[campo_superficie, "AREA"]],
+                area_unit         = "HECTARES",
+                coordinate_format = "SAME_AS_INPUT"
+            )
+            print("Campo '{}' recalculado correctamente (sin cambios de estructura).".format(campo_superficie))
+            return True
+
+        # 6. Caso completo: recrear el campo preservando el orden ----------
         temp_shapefile = arcpy.CreateUniqueName("temp_output.shp", arcpy.env.scratchFolder)
 
-        # Crear la capa temporal vacía con el mismo sistema de coordenadas
         arcpy.management.CreateFeatureclass(
             os.path.dirname(temp_shapefile),
             os.path.basename(temp_shapefile),
-            "POLYGON", # Asumiendo polígonos, se puede hacer más genérico si es necesario
+            geometry_type,
             spatial_reference=spatial_ref
         )
 
-        # Añadir los campos a la capa temporal en el orden original
+        # Añadir campos en el orden original, reemplazando el de superficie
         for field in original_fields:
-            # Omitir campos que no se pueden transferir (como OID, Shape) y el campo a modificar
-            if field.type not in ('OID', 'Geometry') and field.name.lower() != campo_superficie.lower():
-                arcpy.management.AddField(temp_shapefile, field.name, field.type, field.precision, field.scale, field.length, field.aliasName, field.isNullable, field.required, field.domain)
-            # Si encontramos la posición del campo a modificar, lo creamos con las propiedades correctas
-            elif field.name.lower() == campo_superficie.lower():
+            if field.type in ("OID", "Geometry"):
+                continue
+            if field.name.lower() == campo_superficie.lower():
                 arcpy.management.AddField(temp_shapefile, campo_superficie, "DOUBLE", precision, escala)
+            else:
+                arcpy.management.AddField(
+                    temp_shapefile, field.name, field.type,
+                    field.precision, field.scale, field.length,
+                    field.aliasName, field.isNullable, field.required, field.domain
+                )
 
-        # Si el campo no existía, lo añadimos al final
-        # if not field_obj:
-        #     arcpy.management.AddField(temp_shapefile, campo_superficie, "DOUBLE", precision, escala)
+        # Si el campo no existía, añadirlo al final
+        if field_obj is None:
+            arcpy.management.AddField(temp_shapefile, campo_superficie, "DOUBLE", precision, escala)
 
-        # Copiar los atributos de la capa original a la temporal
-        # Crear una lista de los nombres de campo de la capa temporal (excluyendo el campo de superficie)
-        temp_fields = [f.name for f in arcpy.ListFields(temp_shapefile) if f.type not in ('OID', 'Geometry')]
-        # Crear una lista de campos originales que existen en la capa temporal
-        original_fields_to_copy = [f.name for f in original_fields if f.name in temp_fields and f.name.lower() != campo_superficie.lower()]
-        
-        # Usar cursores para una copia eficiente
-        with arcpy.da.SearchCursor(shapefile_path, ['SHAPE@'] + original_fields_to_copy) as s_cursor:
-            with arcpy.da.InsertCursor(temp_shapefile, ['SHAPE@'] + original_fields_to_copy) as i_cursor:
-                for row in s_cursor:
-                    i_cursor.insertRow(row)
+        # 7. Copiar geometría y atributos con cursores ---------------------
+        temp_fields    = set(f.name for f in arcpy.ListFields(temp_shapefile)
+                            if f.type not in ("OID", "Geometry"))
+        fields_to_copy = [f.name for f in original_fields
+                          if f.name in temp_fields
+                          and f.name.lower() != campo_superficie.lower()]
 
-        # Calcular la geometría en la capa temporal
+        with arcpy.da.SearchCursor(shapefile_path, ["SHAPE@"] + fields_to_copy) as s_cur:
+            with arcpy.da.InsertCursor(temp_shapefile, ["SHAPE@"] + fields_to_copy) as i_cur:
+                for row in s_cur:
+                    i_cur.insertRow(row)
+
+        # 8. Calcular superficie en la capa temporal -----------------------
         arcpy.management.CalculateGeometryAttributes(
             temp_shapefile,
-            geometry_property=[[campo_superficie, 'AREA']],
-            area_unit="HECTARES",
-            coordinate_format="SAME_AS_INPUT"
+            geometry_property = [[campo_superficie, "AREA"]],
+            area_unit         = "HECTARES",
+            coordinate_format = "SAME_AS_INPUT"
         )
 
-        # Reemplazar el archivo original
-        arcpy.management.DeleteField(temp_shapefile, "Id")
+        # 9. Eliminar campo "Id" si fue creado por CreateFeatureclass ------
+        if any(f.name == "Id" for f in arcpy.ListFields(temp_shapefile)):
+            arcpy.management.DeleteField(temp_shapefile, "Id")
+
+        # 10. Reemplazar el archivo original --------------------------------
         arcpy.management.Delete(shapefile_path)
         arcpy.management.CopyFeatures(temp_shapefile, shapefile_path)
         arcpy.management.Delete(temp_shapefile)
-        
-        print("Proceso completado. El orden de los campos ha sido preservado.")
+
+        print("Campo '{}' creado y calculado correctamente.".format(campo_superficie))
         return True
 
     except arcpy.ExecuteError:
-        print("\nError de ArcPy:", file=sys.stderr)
-        print(arcpy.GetMessages(2), file=sys.stderr) # Muestra mensajes de error detallados de ArcPy
-        return False
+        raise RuntimeError("Error de ArcPy:\n{}".format(arcpy.GetMessages(2)))
+    except IOError:
+        raise
     except Exception as e:
-        print(f"\nOcurrió un error inesperado: {e}", file=sys.stderr)
-        return False
+        raise RuntimeError("Error inesperado: {}".format(e))
